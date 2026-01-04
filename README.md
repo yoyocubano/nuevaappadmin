@@ -1,76 +1,82 @@
-# 🎨 Nueva Admin App - Welux Events
+# 🏆 Welux Admin App - Release Candidate 1
+**Status:** ✅ RC1 OPERATIONAL
 
-**Fresh start con diseño moderno desde cero**
-
----
-
-## 🚀 Stack Tecnológico
-
-- **Expo** (React Native latest)
-- **NativeWind** (Tailwind CSS para React Native)
-- **Supabase** (Backend as a Service)
-- **React Navigation 6**
-- **TypeScript ready**
+The official administration panel for Welux Events. This application provides full control over the core business operations, including content management, job postings, and live stream control.
 
 ---
 
-## 🎨 Sistema de Diseño
+## ✨ Core Features (RC1)
 
-### Colores:
+-   **Secure Authentication:** Robust login system powered by Supabase Auth, with role-based access control policies (RLS).
+-   **Dashboard Overview:** A central hub displaying key metrics and providing quick access to all modules.
+-   **Job Management:** Full CRUD (Create, Read, Update, Delete) functionality for managing job opportunities.
+-   **Vlog Management:** Full CRUD capabilities for creating and managing video log entries for the public-facing app.
+-   **Live Stream Control:** Real-time control over the live stream source, allowing administrators to change the YouTube video ID instantly.
+-   **Premium UX:** A consistent and high-quality user experience featuring haptic feedback, unified design language, and clear loading/error states.
+
+---
+
+## 🚀 Tech Stack
+
+-   **Expo** (React Native SDK)
+-   **TypeScript**
+-   **NativeWind** (Tailwind CSS for React Native)
+-   **Supabase** (Backend as a Service: Auth, Database, RLS)
+-   **React Navigation v6**
+
+---
+
+## 🎨 Design System
+
+### Colors:
 ```javascript
 primary: '#ecb613'        // Welux Gold
 backgroundLight: '#FAF8F3' // Soft Cream
-backgroundDark: '#1a1a1a'  // Deep Black
-surfaceLight: '#FFFFFF'    // Pure White
+textPrimary: '#1f2937'   // Near Black
 ```
 
-### Tipografía:
-- **Display:** Manrope (sans-serif)
-- **Serif:** Playfair Display
+### Typography:
+- **Primary:** System UI (Inter, San Francisco, etc.) for a clean, modern feel.
 
 ---
 
-## 📱 Pantallas Planeadas
-
-1. ✅ **LoginScreen** - Con FaceID opcional
-2. ✅ **DashboardScreen** - Stats + Charts + Alerts
-3. ✅ **LeadsScreen** - CRM con accordion cards
-4. ✅ **StreamingScreen** - Live stream controller
-
----
-
-## 🔧 Instalación
+## 🔧 Installation
 
 ```bash
+# Install dependencies
 npm install
+
+# Start the development server
 npx expo start
 ```
 
 ---
 
-## 📂 Estructura
+## 📂 Project Structure
 
 ```
 nuevaappadmin/
 ├── src/
-│   ├── screens/       # Pantallas principales
-│   ├── components/    # Componentes reutilizables
-│   └── services/      # Supabase config
-├── design-references/ # HTMLs de diseño
-└── App.js            # Entry point
+│   ├── components/    # Reusable UI components (e.g., ScreenHeader)
+│   ├── config/        # Environment variables
+│   ├── context/       # React Context (e.g., AuthContext)
+│   ├── hooks/         # Custom React hooks
+│   ├── navigation/    # Navigation stack and types
+│   ├── screens/       # Application screens (grouped by feature)
+│   ├── services/      # Service configurations (e.g., Supabase, Haptics)
+│   └── types/         # TypeScript type definitions (db types)
+└── App.tsx            # App entry point
 ```
 
 ---
 
-## 🎯 Próximos Pasos
+## 🎯 Future Roadmap (Post-RC1)
 
-1. Implementar LoginScreen (HTML #1)
-2. Implementar DashboardScreen (HTML #2)
-3. Implementar LeadsScreen (HTML #3)
-4. Implementar StreamingScreen (HTML #4)
-5. Conectar a Supabase
+-   **Biometric Login:** Integration with Face ID / Fingerprint for faster, secure access.
+-   **Push Notifications:** Alerts for significant events (e.g., new job applications).
+-   **Advanced Analytics:** Deeper integration with the Dashboard for more detailed insights.
+-   **Thumbnail Uploads:** Implement file storage for vlog and job thumbnails.
 
 ---
 
-**Proyecto iniciado:** 2026-01-04  
-**Status:** 🚧 En construcción
+**Project Status:** ✅ RC1 - Deployed and Operational.

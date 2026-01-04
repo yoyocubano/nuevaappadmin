@@ -1,125 +1,230 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ImageBackground, ScrollView } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+    View,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    ImageBackground,
+    ScrollView,
+    ActivityIndicator,
+    Alert,
+    RefreshControl,
+    KeyboardAvoidingView,
+    Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabase';
+import { useFocusEffect } from '@react-navigation/native';
+import { HapticsService } from '../utils/haptics';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 export default function StreamControlScreen() {
-    const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+    const { session } = useAuth();
     const [streamId, setStreamId] = useState('');
+    const [currentStreamId, setCurrentStreamId] = useState('');
+    const [isLive, setIsLive] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const userName = session?.user?.user_metadata?.full_name?.split(' ')[0] || 'Admin';
+
+    const fetchStreamConfig = useCallback(async () => {
+        const { data, error } = await supabase
+            .from('stream_config')
+            .select('*')
+            .eq('id', 1)
+            .single();
+
+        setLoading(false);
+
+        if (error) {
+            console.error("Error fetching stream config:", error.message);
+            setError("Couldn't load stream data.");
+        } else if (data) {
+            setCurrentStreamId(data.youtube_video_id || '');
+            setStreamId(data.youtube_video_id || '');
+            setIsLive(data.is_live || false);
+        }
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            setLoading(true);
+            fetchStreamConfig();
+        }, [fetchStreamConfig])
+    );
+
+    const handleToggleLive = async () => {
+        HapticsService.section();
+        const newState = !isLive;
+        setIsUpdating(true);
+
+        const { error } = await supabase
+            .from('stream_config')
+            .update({ is_live: newState, updated_at: new Date().toISOString() })
+            .eq('id', 1);
+
+        if (error) {
+            HapticsService.error();
+            Alert.alert('Error', 'Failed to update live status.');
+        } else {
+            setIsLive(newState);
+            HapticsService.success();
+        }
+        setIsUpdating(false);
+    };
+
+    const handleUpdateStream = async () => {
+        HapticsService.light();
+
+        if (!streamId) {
+            HapticsService.error();
+            Alert.alert('Video ID Required', 'Please enter a YouTube video ID.');
+            return;
+        }
+
+        setIsUpdating(true);
+        const { error } = await supabase
+            .from('stream_config')
+            .update({ youtube_video_id: streamId, updated_at: new Date().toISOString() })
+            .eq('id', 1);
+
+        setIsUpdating(false);
+
+        if (error) {
+            HapticsService.error();
+            Alert.alert("Update Failed", "Could not update the stream ID.");
+        } else {
+            setCurrentStreamId(streamId);
+            HapticsService.success();
+            Alert.alert("Stream Updated", "The live stream source has been updated.");
+        }
+    };
+
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return "Good morning";
+        if (hour < 18) return "Good afternoon";
+        return "Good evening";
+    };
+
+    const youtubeThumbnailUrl = `https://img.youtube.com/vi/${currentStreamId}/hqdefault.jpg`;
+
+    if (loading) {
+        return (
+            <View className="flex-1 justify-center items-center bg-background-light">
+                <ActivityIndicator size="large" color="#ecb613" />
+            </View>
+        );
+    }
 
     return (
         <View className="flex-1 bg-background-light">
-            <View className="bg-white/95 px-6 py-4 pt-12 border-b border-gray-200 flex-row items-center justify-between sticky top-0 z-50">
-                <View className="flex-row items-center gap-3">
-                    <TouchableOpacity
-                        onPress={() => navigation.goBack()}
-                        className="w-8 h-8 rounded-full items-center justify-center -ml-2"
-                    >
-                        <Ionicons name="arrow-back" size={24} color="#1f2937" />
-                    </TouchableOpacity>
-                    <Text className="text-xl font-extrabold text-gray-900 tracking-tight">Stream Controller</Text>
-                </View>
-                <View className="flex-row items-center gap-2 bg-green-50 px-2 py-1 rounded-full">
-                    <Text className="text-[10px] font-bold text-green-700 uppercase tracking-wider">Connected</Text>
-                    <Ionicons name="wifi" size={14} color="#15803d" />
-                </View>
-            </View>
+            <ScreenHeader title="Live Control" />
 
-            <ScrollView className="flex-1 p-4">
-                {/* Preview Card */}
-                <View className="rounded-xl overflow-hidden bg-gray-900 border border-gray-800 shadow-sm mb-6">
-                    <View className="w-full aspect-video bg-gray-800 relative">
-                        <ImageBackground
-                            source={{ uri: 'https://images.unsplash.com/photo-1501612780327-6c5796bbab4b' }}
-                            className="w-full h-full opacity-80"
-                        >
-                            <View className="absolute top-3 left-3 bg-black/60 px-2 py-1 rounded flex-row items-center gap-2 backdrop-blur-md">
-                                <View className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                                <Text className="text-white text-[10px] font-bold tracking-wider">LIVE</Text>
-                            </View>
-                            <View className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
-                                <Text className="text-xs font-medium text-white/80 mb-0.5">PREVIEW</Text>
-                                <Text className="text-lg font-bold text-white leading-tight">Gala Night Main Stage</Text>
-                            </View>
-                        </ImageBackground>
-                    </View>
-
-                    <View className="px-5 py-4 flex-row items-center justify-between bg-white">
-                        <View>
-                            <Text className="text-xs text-gray-500 uppercase tracking-wide">Viewer Count</Text>
-                            <Text className="text-lg font-bold text-gray-900">1,248</Text>
-                        </View>
-                        <View className="items-end">
-                            <Text className="text-xs text-gray-500 uppercase tracking-wide">Duration</Text>
-                            <Text className="text-lg font-bold text-gray-900">01:42:15</Text>
-                        </View>
-                    </View>
-                </View>
-
-                <View className="h-px bg-gray-200 w-full mb-6" />
-
-                {/* Update Source Section */}
-                <View className="mb-6">
-                    <View className="mb-4">
-                        <Text className="text-2xl font-bold text-gray-900">Update Source</Text>
-                        <Text className="text-sm text-gray-500 mt-1 leading-5">
-                            Enter the YouTube Video ID or full URL below to switch the live feed instantly.
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                className="flex-1"
+            >
+                <ScrollView
+                    className="flex-1"
+                    refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchStreamConfig} />}
+                >
+                    {/* Greeting Section */}
+                    <View className="px-6 py-6 pb-2">
+                        <Text className="text-3xl font-extrabold text-gray-900 tracking-tight" style={{ fontFamily: 'serif' }}>
+                            {getGreeting()}, {userName}.
                         </Text>
+                        <Text className="text-base text-gray-500 mt-1">Ready to broadcast?</Text>
                     </View>
 
-                    <View className="gap-2">
-                        <Text className="text-sm font-semibold text-gray-900">New Stream Source</Text>
-                        <View className="relative">
-                            <TextInput
-                                className="w-full h-14 pl-4 pr-12 rounded-lg bg-white border border-gray-300 text-base focus:border-primary"
-                                placeholder="e.g., dQw4w9WgXcQ"
-                                value={streamId}
-                                onChangeText={setStreamId}
-                            />
-                            <TouchableOpacity className="absolute right-0 top-0 bottom-0 px-4 items-center justify-center">
-                                <Ionicons name="clipboard-outline" size={20} color="#9ca3af" />
+                    {/* LIVE STATUS TOGGLE (Fusionado) */}
+                    <View className="px-4 py-4">
+                        <View className={`bg-white rounded-2xl p-6 shadow-sm border ${isLive ? 'border-red-100' : 'border-gray-100'} items-center`}>
+                            <View className={`w-16 h-16 rounded-full items-center justify-center mb-3 ${isLive ? 'bg-red-500 shadow-lg shadow-red-500/30' : 'bg-gray-100'}`}>
+                                <Ionicons name="radio" size={28} color={isLive ? 'white' : '#9ca3af'} />
+                            </View>
+                            <Text className="text-xl font-bold text-gray-900 mb-1">
+                                {isLive ? 'ON AIR' : 'OFFLINE'}
+                            </Text>
+                            <Text className="text-gray-500 text-xs mb-5 text-center">
+                                {isLive
+                                    ? 'Broadcast is live on the public app.'
+                                    : 'Start stream to make it visible.'}
+                            </Text>
+
+                            <TouchableOpacity
+                                className={`w-full h-12 rounded-xl items-center justify-center flex-row gap-2 ${isLive ? 'bg-gray-900' : 'bg-red-500 shadow-lg shadow-red-500/30'
+                                    } ${isUpdating ? 'opacity-70' : ''}`}
+                                onPress={handleToggleLive}
+                                disabled={isUpdating}
+                            >
+                                {isUpdating ? (
+                                    <ActivityIndicator color="white" />
+                                ) : (
+                                    <>
+                                        <Ionicons name={isLive ? 'stop-circle-outline' : 'play-circle-outline'} size={20} color="white" />
+                                        <Text className="text-white font-bold text-base">
+                                            {isLive ? 'End Broadcast' : 'Go Live Now'}
+                                        </Text>
+                                    </>
+                                )}
                             </TouchableOpacity>
                         </View>
-                        <View className="flex-row items-center gap-1 mt-1 px-1">
-                            <Ionicons name="information-circle-outline" size={14} color="#6b7280" />
-                            <Text className="text-xs text-gray-500">Updates reflect immediately on the public site.</Text>
+                    </View>
+
+                    {/* PREVIEW SECTION (Tu diseño mejorado) */}
+                    <View className="px-4 mb-2">
+                        <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase ml-1 mb-2">Current Feed Preview</Text>
+                        <View className="rounded-xl overflow-hidden bg-gray-900 border border-gray-800 shadow-sm mb-6">
+                            <View className="w-full aspect-video bg-gray-800 relative">
+                                <ImageBackground source={{ uri: youtubeThumbnailUrl }} className="w-full h-full opacity-80" />
+                                {isLive && (
+                                    <View className="absolute top-3 left-3 bg-red-600 px-2 py-1 rounded flex-row items-center gap-2 shadow-sm">
+                                        <View className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                        <Text className="text-white text-[10px] font-bold tracking-wider">LIVE</Text>
+                                    </View>
+                                )}
+                                <View className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/90 to-transparent">
+                                    <Text className="text-[10px] font-medium text-white/70 mb-0.5 uppercase tracking-wide">Source ID</Text>
+                                    <Text className="text-base font-bold text-white leading-tight font-mono">{currentStreamId || 'Not Configured'}</Text>
+                                </View>
+                            </View>
                         </View>
                     </View>
 
-                    <TouchableOpacity
-                        className="w-full h-14 bg-primary rounded-lg shadow-lg shadow-primary/20 flex-row items-center justify-center gap-2 mt-6 active:scale-[0.98]"
-                    >
-                        <Text className="font-extrabold text-white text-base tracking-widest uppercase">Update Stream</Text>
-                        <Ionicons name="sync" size={20} color="white" />
-                    </TouchableOpacity>
-                </View>
-
-                {/* Logs */}
-                <View className="mt-2 pb-12">
-                    <Text className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-1">Recent Activity</Text>
-                    <View className="gap-3">
-                        <View className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex-row items-start gap-3">
-                            <Ionicons name="checkmark-circle" size={18} color="#10b981" style={{ marginTop: 2 }} />
-                            <View className="flex-1">
-                                <Text className="text-sm font-semibold text-gray-900">Stream Updated Successfully</Text>
-                                <Text className="text-xs text-gray-500">Changed to ID: <Text className="font-mono">dQw4w9WgXcQ</Text></Text>
-                            </View>
-                            <Text className="text-xs text-gray-400">10:42 AM</Text>
+                    {/* UPDATE SOURCE SECTION */}
+                    <View className="px-4 mb-10">
+                        <View className="mb-2">
+                            <Text className="text-lg font-bold text-gray-900">Config Source</Text>
                         </View>
-
-                        <View className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex-row items-start gap-3 opacity-60">
-                            <Ionicons name="time-outline" size={18} color="#9ca3af" style={{ marginTop: 2 }} />
-                            <View className="flex-1">
-                                <Text className="text-sm font-semibold text-gray-900">Stream Started</Text>
-                                <Text className="text-xs text-gray-500">Initial boot sequence</Text>
-                            </View>
-                            <Text className="text-xs text-gray-400">09:00 AM</Text>
-                        </View>
+                        <TextInput
+                            className="w-full h-14 pl-4 pr-12 rounded-lg bg-white border border-gray-300 text-base focus:border-primary font-mono shadow-sm"
+                            placeholder="e.g., dQw4w9WgXcQ"
+                            value={streamId}
+                            onChangeText={setStreamId}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            editable={!isUpdating}
+                        />
+                        <TouchableOpacity
+                            className={`w-full h-14 rounded-lg shadow-lg flex-row items-center justify-center gap-2 mt-4 active:scale-[0.98] ${isUpdating ? 'bg-primary/70' : 'bg-primary shadow-primary/20'}`}
+                            onPress={handleUpdateStream}
+                            disabled={isUpdating}
+                        >
+                            {isUpdating ? (
+                                <ActivityIndicator color="#1f2937" />
+                            ) : (
+                                <>
+                                    <Ionicons name="sync" size={20} color="#1f2937" />
+                                    <Text className="font-extrabold text-gray-900 text-base tracking-wide uppercase">Update Source</Text>
+                                </>)}
+                        </TouchableOpacity>
                     </View>
-                </View>
-            </ScrollView>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </View>
     );
 }

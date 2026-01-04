@@ -1,115 +1,192 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ImageBackground, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+    View,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    ScrollView,
+    ImageBackground,
+    Alert,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../../types';
+import { supabase } from '../../services/supabase';
+import { RootStackParamList, Vlog } from '../../types';
+import { ScreenHeader } from '../../components/ScreenHeader';
+import { HapticsService } from '../../utils/haptics';
+
+type VlogEditScreenRouteProp = RouteProp<RootStackParamList, 'VlogEdit'>;
 
 export default function VlogEditScreen() {
     const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-    const route = useRoute();
-    // In real app, fetch data using route.params.id
+    const route = useRoute<VlogEditScreenRouteProp>();
+    const id = route.params.id;
+    const [vlog, setVlog] = useState<Vlog | null>(null);
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
-    const [title, setTitle] = useState('Summer Gala Highlights 2023');
-    const [description, setDescription] = useState('Join us for an exclusive look behind the scenes of the annual Summer Gala. From the red carpet arrivals to the stunning main event.');
+    useEffect(() => {
+        const fetchVlog = async () => {
+            const { data, error } = await supabase.from('vlogs').select('*').eq('id', id).single();
+            if (error) {
+                Alert.alert('Error', 'Failed to fetch vlog details.');
+                console.error("Error fetching vlog:", error);
+            } else if (data) {
+                setVlog(data as Vlog);
+                setTitle(data.title);
+                setDescription(data.description || '');
+            }
+            setLoading(false);
+        };
+        fetchVlog();
+    }, [id]);
+
+    const handleUpdate = async () => {
+        HapticsService.light();
+
+        if (!title) {
+            HapticsService.error();
+            Alert.alert('Title Required', 'Please enter a title for the vlog.');
+            return;
+        }
+
+        setIsSaving(true);
+        const { data, error } = await supabase
+            .from('vlogs')
+            .update({ title, description })
+            .eq('id', id);
+
+        if (error) {
+            HapticsService.error();
+            Alert.alert('Error', 'Failed to update vlog.');
+            console.error("Error updating vlog:", error);
+        } else {
+            HapticsService.success();
+            navigation.goBack();
+        }
+        setIsSaving(false);
+    };
 
     const handleDelete = () => {
+        HapticsService.heavy();
         Alert.alert(
             "Delete Vlog",
             "Are you sure you want to delete this vlog? This action cannot be undone.",
             [
                 { text: "Cancel", style: "cancel" },
-                { text: "Delete", style: "destructive", onPress: () => navigation.goBack() }
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        setIsDeleting(true);
+                        const { error } = await supabase.from('vlogs').delete().eq('id', id);
+                        if (error) {
+                            HapticsService.error();
+                            Alert.alert('Error', 'Failed to delete vlog.');
+                            console.error("Error deleting vlog:", error);
+                            setIsDeleting(false);
+                        } else {
+                            HapticsService.success();
+                            navigation.goBack();
+                        }
+                    },
+                },
             ]
         );
     };
 
+    if (loading) {
+        return (
+            <View className="flex-1 justify-center items-center bg-background-light">
+                <ActivityIndicator size="large" color="#ecb613" />
+            </View>
+        );
+    }
+
     return (
         <View className="flex-1 bg-background-light">
-            <View className="bg-white/90 px-4 py-3 pt-12 border-b border-gray-200 flex-row items-center justify-between sticky top-0 z-50">
-                <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    className="w-10 h-10 rounded-full hover:bg-black/5 items-center justify-center"
-                >
-                    <Ionicons name="arrow-back" size={24} color="#1f2937" />
-                </TouchableOpacity>
-                <Text className="text-lg font-bold text-gray-900">Edit Vlog</Text>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Text className="text-primary font-bold">Cancel</Text>
-                </TouchableOpacity>
-            </View>
+            <ScreenHeader title="Edit Vlog" showBack />
 
-            <ScrollView className="flex-1 p-4">
-                {/* Thumbnail Preview */}
-                <View className="h-48 rounded-xl overflow-hidden mb-6 relative bg-gray-900 border border-gray-200">
-                    <ImageBackground
-                        source={{ uri: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30' }}
-                        className="w-full h-full opacity-60"
-                    />
-                    <View className="absolute inset-0 items-center justify-center gap-2">
-                        <Ionicons name="camera-outline" size={32} color="white" />
-                        <Text className="text-white text-xs font-bold uppercase tracking-widest">Change Thumbnail</Text>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                className="flex-1"
+            >
+                <ScrollView className="flex-1 p-4">
+                    <View className="h-48 rounded-xl overflow-hidden mb-6 relative bg-gray-900 border border-gray-200 shadow-md">
+                        <ImageBackground
+                            source={{ uri: vlog?.thumbnail_url || 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30' }}
+                            className="w-full h-full opacity-60"
+                        />
+                        <TouchableOpacity className="absolute inset-0 items-center justify-center gap-2">
+                            <Ionicons name="camera-outline" size={32} color="white" />
+                            <Text className="text-white text-xs font-bold uppercase tracking-widest shadow-sm">Change Thumbnail</Text>
+                        </TouchableOpacity>
                     </View>
-                </View>
 
-                <View className="gap-6">
-                    <View className="gap-2">
-                        <Text className="text-sm font-semibold text-gray-500 ml-1">Vlog Title</Text>
-                        <View className="relative">
+                    <View className="gap-6 pb-4">
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">
+                                Title <Text className="text-red-500">*</Text>
+                            </Text>
                             <TextInput
-                                className="bg-white border border-gray-200 rounded-xl h-14 px-4 text-base font-medium text-gray-900"
+                                className="bg-white border border-gray-300 rounded-xl h-14 px-4 text-base font-medium text-gray-900 shadow-sm"
                                 value={title}
                                 onChangeText={setTitle}
+                                editable={!isSaving}
                             />
-                            <View className="absolute right-4 top-4">
-                                <Ionicons name="pencil" size={18} color="#ecb613" />
-                            </View>
+                        </View>
+
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">Description</Text>
+                            <TextInput
+                                className="bg-white border border-gray-300 rounded-xl p-4 text-base min-h-[160px] text-gray-900 shadow-sm"
+                                multiline
+                                textAlignVertical="top"
+                                value={description}
+                                onChangeText={setDescription}
+                                editable={!isSaving}
+                            />
                         </View>
                     </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
 
-                    <View className="gap-2">
-                        <Text className="text-sm font-semibold text-gray-500 ml-1">Description</Text>
-                        <TextInput
-                            className="bg-white border border-gray-200 rounded-xl p-4 text-base min-h-[160px] text-gray-900"
-                            multiline
-                            textAlignVertical="top"
-                            value={description}
-                            onChangeText={setDescription}
-                        />
-                    </View>
-
-                    <View className="flex-row gap-4">
-                        <View className="flex-1 gap-2">
-                            <Text className="text-sm font-semibold text-gray-500 ml-1">Date</Text>
-                            <View className="bg-gray-50 rounded-xl h-12 px-4 justify-center border border-gray-200">
-                                <Text className="font-medium text-gray-900">Aug 12, 2023</Text>
-                            </View>
-                        </View>
-                        <View className="flex-1 gap-2">
-                            <Text className="text-sm font-semibold text-gray-500 ml-1">Duration</Text>
-                            <View className="bg-gray-50 rounded-xl h-12 px-4 justify-center border border-gray-200">
-                                <Text className="font-medium text-gray-900">12:45</Text>
-                            </View>
-                        </View>
-                    </View>
-                </View>
-            </ScrollView>
-
-            <View className="p-5 pb-8 bg-white border-t border-gray-100 gap-4">
+            <View className="p-4 pb-8 bg-white border-t border-gray-200 mt-auto gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                 <TouchableOpacity
-                    className="bg-primary h-14 rounded-full items-center justify-center shadow-lg shadow-primary/20 flex-row gap-2"
-                    onPress={() => navigation.goBack()}
+                    className={`h-14 rounded-lg items-center justify-center shadow-lg flex-row gap-2 ${isSaving ? 'bg-primary/70' : 'bg-primary shadow-primary/20'}`}
+                    onPress={handleUpdate}
+                    disabled={isSaving || isDeleting}
                 >
-                    <Text className="font-bold text-gray-900 text-lg">Update Changes</Text>
-                    <Ionicons name="checkmark-circle-outline" size={24} color="#1f2937" />
+                    {isSaving ? (
+                        <ActivityIndicator color="#1f2937" />
+                    ) : (
+                        <>
+                            <Ionicons name="save-outline" size={20} color="#1f2937" />
+                            <Text className="font-bold text-gray-900 text-lg">Update Changes</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    className="bg-red-50 h-14 rounded-full items-center justify-center flex-row gap-2"
+                    className={`h-14 rounded-lg items-center justify-center flex-row gap-2 border border-red-100 ${isDeleting ? 'bg-red-100' : 'bg-red-50'}`}
                     onPress={handleDelete}
+                    disabled={isSaving || isDeleting}
                 >
-                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                    <Text className="font-bold text-red-500 text-base">Delete Vlog</Text>
+                    {isDeleting ? (
+                        <ActivityIndicator color="#ef4444" />
+                    ) : (
+                        <>
+                            <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                            <Text className="font-bold text-red-500 text-base">Delete Vlog</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
             </View>
         </View>

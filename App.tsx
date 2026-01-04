@@ -1,9 +1,13 @@
 import React from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import './global.css';
+
+// Auth
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
@@ -27,18 +31,28 @@ import { RootStackParamList } from './src/types';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-export default function App() {
+// Navigator that handles Auth State Logic
+const RootNavigator = () => {
+    const { session, loading } = useAuth();
+
+    if (loading) {
+        return (
+            <View className="flex-1 justify-center items-center bg-background-light">
+                <ActivityIndicator size="large" color="#ecb613" />
+            </View>
+        );
+    }
+
     return (
-        <SafeAreaProvider>
-            <NavigationContainer>
-                <Stack.Navigator
-                    initialRouteName="Login"
-                    screenOptions={{
-                        headerShown: false,
-                        cardStyle: { backgroundColor: '#FAF8F3' },
-                    }}
-                >
-                    <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Navigator
+            screenOptions={{
+                headerShown: false,
+                cardStyle: { backgroundColor: '#FAF8F3' }
+            }}
+        >
+            {session ? (
+                // Authenticated Stack
+                <>
                     <Stack.Screen name="MainTabs" component={MainTabNavigator} />
 
                     {/* Content Flows */}
@@ -51,9 +65,24 @@ export default function App() {
                     <Stack.Screen name="JobEdit" component={JobEditScreen} />
 
                     <Stack.Screen name="StreamControl" component={StreamControlScreen} />
-                </Stack.Navigator>
-                <StatusBar style="dark" />
-            </NavigationContainer>
+                </>
+            ) : (
+                // Non-Authenticated Stack
+                <Stack.Screen name="Login" component={LoginScreen} />
+            )}
+        </Stack.Navigator>
+    );
+};
+
+export default function App() {
+    return (
+        <SafeAreaProvider>
+            <AuthProvider>
+                <NavigationContainer>
+                    <RootNavigator />
+                    <StatusBar style="dark" />
+                </NavigationContainer>
+            </AuthProvider>
         </SafeAreaProvider>
     );
 }

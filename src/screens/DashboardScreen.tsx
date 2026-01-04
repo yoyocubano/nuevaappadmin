@@ -6,6 +6,7 @@ import {
     TouchableOpacity,
     RefreshControl,
     Dimensions,
+    ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase';
@@ -15,33 +16,56 @@ const { width } = Dimensions.get('window');
 
 export default function DashboardScreen() {
     const [refreshing, setRefreshing] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({
         totalLeads: 0,
+        totalJobs: 0,
         streamStatus: 'LIVE',
         systemHealth: 99.9,
     });
 
-    const onRefresh = async () => {
-        setRefreshing(true);
-        await loadStats();
-        setRefreshing(false);
-    };
-
-    const loadStats = async () => {
+    const loadDashboardData = async () => {
         try {
-            const { data: leads } = await supabase.from('leads').select('*');
+            // Fetch leads and jobs in parallel for better performance
+            const [leadsResponse, jobsResponse] = await Promise.all([
+                supabase.from('leads').select('id', { count: 'exact', head: true }),
+                supabase.from('jobs').select('id', { count: 'exact', head: true })
+            ]);
+
+            if (leadsResponse.error) throw new Error(`Leads Error: ${leadsResponse.error.message}`);
+            if (jobsResponse.error) throw new Error(`Jobs Error: ${jobsResponse.error.message}`);
+
             setStats(prev => ({
                 ...prev,
-                totalLeads: leads?.length || 0,
+                totalLeads: leadsResponse.count || 0,
+                totalJobs: jobsResponse.count || 0,
             }));
+
         } catch (error) {
-            console.error('Error loading stats:', error);
+            console.error('Error loading dashboard data:', error);
+        } finally {
+            setLoading(false);
         }
     };
 
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadDashboardData();
+        setRefreshing(false);
+    };
+
     useEffect(() => {
-        loadStats();
+        loadDashboardData();
     }, []);
+
+    if (loading) {
+        return (
+            <View className="flex-1 justify-center items-center bg-background-light">
+                <ActivityIndicator size="large" color="#ecb613" />
+                <Text className="mt-4 text-gray-600">Loading Dashboard...</Text>
+            </View>
+        );
+    }
 
     return (
         <View className="flex-1 bg-background-light">
@@ -96,21 +120,36 @@ export default function DashboardScreen() {
                         <Text className="text-2xl font-bold text-gray-900 mt-1">{stats.totalLeads}</Text>
                     </View>
 
-                    {/* Stream Status Card */}
-                    <View className="flex-1 bg-white rounded-2xl p-5 border border-gray-100 shadow-sm relative overflow-hidden">
-                        <View className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full" style={{ opacity: 0.5 }} />
-                        <View className="flex-row items-center justify-between mb-4 relative z-10">
-                            <View className="bg-red-50 p-2 rounded-lg">
-                                <Ionicons name="videocam" size={20} color="#ef4444" />
+                    {/* Active Jobs Card */}
+                    <View className="flex-1 bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                        <View className="flex-row items-center justify-between mb-4">
+                            <View className="bg-blue-100 p-2 rounded-lg">
+                                <Ionicons name="briefcase" size={20} color="#3b82f6" />
                             </View>
-                            <View className="w-3 h-3 relative">
-                                <View className="absolute w-full h-full bg-primary rounded-full animate-ping" style={{ opacity: 0.75 }} />
-                                <View className="w-3 h-3 bg-primary rounded-full" />
+                            <View className="bg-green-50 px-2 py-1 rounded-full flex-row items-center gap-1">
+                                <Ionicons name="trending-up" size={14} color="#10b981" />
+                                <Text className="text-xs font-bold text-green-600">5%</Text>
                             </View>
                         </View>
-                        <Text className="text-sm font-medium text-gray-500 relative z-10">Stream Status</Text>
-                        <Text className="text-2xl font-bold text-primary mt-1 relative z-10">{stats.streamStatus}</Text>
+                        <Text className="text-sm font-medium text-gray-500">Active Jobs</Text>
+                        <Text className="text-2xl font-bold text-gray-900 mt-1">{stats.totalJobs}</Text>
                     </View>
+                </View>
+
+                {/* Stream Status Card (Full Width for prominence) */}
+                <View className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm relative overflow-hidden mb-6">
+                    <View className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full" style={{ opacity: 0.5 }} />
+                    <View className="flex-row items-center justify-between mb-4 relative z-10">
+                        <View className="bg-red-50 p-2 rounded-lg">
+                            <Ionicons name="videocam" size={20} color="#ef4444" />
+                        </View>
+                        <View className="flex-row items-center gap-2">
+                            <Text className="text-xs font-bold text-red-500 animate-pulse">LIVE BROADCAST</Text>
+                            <View className="w-3 h-3 bg-red-500 rounded-full" />
+                        </View>
+                    </View>
+                    <Text className="text-sm font-medium text-gray-500 relative z-10">Stream Status</Text>
+                    <Text className="text-2xl font-bold text-gray-900 mt-1 relative z-10">{stats.streamStatus}</Text>
                 </View>
 
                 {/* System Health */}
@@ -167,49 +206,6 @@ export default function DashboardScreen() {
                                 strokeLinecap="round"
                             />
                         </Svg>
-                    </View>
-                </View>
-
-                {/* Recent Alerts */}
-                <View className="mb-6 pb-6">
-                    <Text className="text-lg font-bold text-gray-900 px-1 mb-4">Recent Alerts</Text>
-
-                    <View className="space-y-3">
-                        {/* Alert 1 */}
-                        <View className="flex-row items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <View className="w-10 h-10 rounded-full bg-blue-50 items-center justify-center">
-                                <Ionicons name="person-add-outline" size={20} color="#3b82f6" />
-                            </View>
-                            <View className="flex-1">
-                                <Text className="text-sm font-bold text-gray-900">New VIP Registration</Text>
-                                <Text className="text-xs text-gray-500">Sarah Jenkins - Corporate Package</Text>
-                            </View>
-                            <Text className="text-xs font-medium text-gray-400">2m ago</Text>
-                        </View>
-
-                        {/* Alert 2 */}
-                        <View className="flex-row items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <View className="w-10 h-10 rounded-full bg-orange-50 items-center justify-center">
-                                <Ionicons name="key-outline" size={20} color="#f97316" />
-                            </View>
-                            <View className="flex-1">
-                                <Text className="text-sm font-bold text-gray-900">Stream Key Updated</Text>
-                                <Text className="text-xs text-gray-500">Admin updated RTMP settings</Text>
-                            </View>
-                            <Text className="text-xs font-medium text-gray-400">1h ago</Text>
-                        </View>
-
-                        {/* Alert 3 */}
-                        <View className="flex-row items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <View className="w-10 h-10 rounded-full bg-green-50 items-center justify-center">
-                                <Ionicons name="cloud-done-outline" size={20} color="#10b981" />
-                            </View>
-                            <View className="flex-1">
-                                <Text className="text-sm font-bold text-gray-900">Database Backup</Text>
-                                <Text className="text-xs text-gray-500">Daily snapshot created successfully</Text>
-                            </View>
-                            <Text className="text-xs font-medium text-gray-400">4h ago</Text>
-                        </View>
                     </View>
                 </View>
             </ScrollView>

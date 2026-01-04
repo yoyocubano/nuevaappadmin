@@ -1,127 +1,290 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../../types';
+import { RootStackParamList, Job } from '../../types';
+import { supabase } from '../../services/supabase';
+import { HapticsService } from '../../utils/haptics';
+import { ScreenHeader } from '../../components/ScreenHeader';
+
+type JobEditScreenRouteProp = RouteProp<RootStackParamList, 'JobEdit'>;
 
 export default function JobEditScreen() {
     const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+    const route = useRoute<JobEditScreenRouteProp>();
+    const jobId = route.params.id;
 
-    // Mock Data
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     const [formData, setFormData] = useState({
-        title: 'Senior Event Coordinator',
-        company: 'Welux Events',
-        location: 'New York, NY',
-        deadline: 'Oct 24, 2023',
-        description: 'Responsible for planning and executing high-end corporate events and luxury weddings. Must have 5+ years of experience in the hospitality industry, strong organizational skills, and a portfolio of past events.'
+        title: '',
+        company: '',
+        location: '',
+        deadline: '',
+        description: '',
+        requirements: ''
     });
+
+    // 1. Fetch Job Data on Mount
+    useEffect(() => {
+        const fetchJob = async () => {
+            if (!jobId) {
+                Alert.alert("Error", "No job ID provided.", [{ text: "OK", onPress: () => navigation.goBack() }]);
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('jobs')
+                    .select('*')
+                    .eq('id', jobId)
+                    .single();
+
+                if (error || !data) throw error;
+
+                // Transform requirements array back to string
+                const reqString = data.requirements
+                    ? (data.requirements as string[]).join('\n')
+                    : '';
+
+                // Format date
+                const deadlineDate = data.deadline
+                    ? new Date(data.deadline).toISOString().split('T')[0]
+                    : '';
+
+                setFormData({
+                    title: data.title || '',
+                    company: data.company || '',
+                    location: data.location || '',
+                    deadline: deadlineDate,
+                    description: data.description || '',
+                    requirements: reqString
+                });
+
+            } catch (error) {
+                console.error("Fetch job error:", error);
+                Alert.alert("Error", "Could not load job details.", [{ text: "OK", onPress: () => navigation.goBack() }]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchJob();
+    }, [jobId]);
 
     const handleChange = (key: string, value: string) => {
         setFormData(prev => ({ ...prev, [key]: value }));
     };
 
+    // 2. Handle Update
+    const handleUpdate = async () => {
+        HapticsService.light();
+
+        if (!formData.title || !formData.company) {
+            HapticsService.error();
+            Alert.alert("Validation Error", "Title and Company are required.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            // Prepare requirements array
+            const requirementsArray = formData.requirements
+                ? formData.requirements.split('\n').map(req => req.trim()).filter(req => req.length > 0)
+                : [];
+
+            const { error } = await supabase
+                .from('jobs')
+                .update({
+                    title: formData.title,
+                    company: formData.company,
+                    location: formData.location || null,
+                    deadline: formData.deadline || null,
+                    description: formData.description || null,
+                    requirements: requirementsArray
+                })
+                .eq('id', jobId);
+
+            if (error) throw error;
+
+            HapticsService.success();
+            Alert.alert("Success", "Job updated successfully.", [
+                { text: "OK", onPress: () => navigation.goBack() }
+            ]);
+        } catch (error: any) {
+            HapticsService.error();
+            // Handle specific Supabase errors if needed
+            Alert.alert("Error", `Failed to update job: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // 3. Handle Delete
     const handleDelete = () => {
+        HapticsService.heavy(); // Heavy impact for destructive action
         Alert.alert(
             "Delete Job",
-            "Are you sure? This will remove the job listing permanently.",
+            "Are you sure? This action cannot be undone.",
             [
-                { text: "Cancel", style: "cancel" },
-                { text: "Delete", style: "destructive", onPress: () => navigation.goBack() }
+                { text: "Cancel", style: "cancel", onPress: () => { } },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        setIsDeleting(true);
+                        try {
+                            const { error } = await supabase.from('jobs').delete().eq('id', jobId);
+                            if (error) throw error;
+
+                            HapticsService.success();
+                            // Pop to top to avoid stale state in navigation stack
+                            navigation.popToTop();
+                        } catch (error: any) {
+                            HapticsService.error();
+                            Alert.alert("Error", "Failed to delete job.");
+                        } finally {
+                            setIsDeleting(false);
+                        }
+                    }
+                }
             ]
         );
     };
 
+    if (isLoading) {
+        return (
+            <View className="flex-1 justify-center items-center bg-background-light">
+                <ActivityIndicator size="large" color="#ecb613" />
+                <Text className="mt-4 text-gray-500">Loading Job Details...</Text>
+            </View>
+        );
+    }
+
     return (
         <View className="flex-1 bg-background-light">
-            <View className="bg-white px-4 py-3 pt-12 border-b border-gray-200 flex-row items-center justify-between sticky top-0 z-50">
-                <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    className="w-10 h-10 rounded-full hover:bg-gray-100 items-center justify-center"
-                >
-                    <Ionicons name="arrow-back" size={24} color="#1f2937" />
-                </TouchableOpacity>
-                <Text className="text-lg font-bold text-gray-900 pr-2">Edit Job</Text>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Text className="font-bold text-gray-500">Cancel</Text>
-                </TouchableOpacity>
-            </View>
+            <ScreenHeader title="Edit Job" showBack />
 
-            <ScrollView className="flex-1 p-4 pb-24">
-                <View className="gap-5 py-2">
-                    {/* Form Fields - Reusing logic but simpler layout for Edit */}
-                    <View className="gap-2">
-                        <Text className="text-base font-medium text-gray-900">Job Title</Text>
-                        <TextInput
-                            className="bg-white border border-gray-300 rounded-lg h-14 px-4 text-base"
-                            value={formData.title}
-                            onChangeText={(t) => handleChange('title', t)}
-                        />
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                className="flex-1"
+            >
+                <ScrollView className="flex-1 p-5">
+                    <View className="mb-2">
+                        <Text className="text-2xl font-bold italic text-gray-800 mb-1" style={{ fontFamily: 'serif' }}>
+                            Edit Details
+                        </Text>
+                        <Text className="text-sm text-gray-500">
+                            Update job information or remove listing.
+                        </Text>
                     </View>
 
-                    <View className="gap-2">
-                        <Text className="text-base font-medium text-gray-900">Company Name</Text>
-                        <TextInput
-                            className="bg-white border border-gray-300 rounded-lg h-14 px-4 text-base"
-                            value={formData.company}
-                            onChangeText={(t) => handleChange('company', t)}
-                        />
-                    </View>
-
-                    <View className="gap-2">
-                        <Text className="text-base font-medium text-gray-900">Location</Text>
-                        <View className="relative">
+                    <View className="gap-5 mt-6 pb-24">
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">
+                                Job Title <Text className="text-red-500">*</Text>
+                            </Text>
                             <TextInput
-                                className="bg-white border border-gray-300 rounded-lg h-14 pl-4 pr-10 text-base"
+                                className="bg-white border border-gray-300 rounded-lg py-3.5 px-4 text-base shadow-sm focus:border-primary"
+                                value={formData.title}
+                                onChangeText={(t) => handleChange('title', t)}
+                                editable={!isSubmitting}
+                            />
+                        </View>
+
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">
+                                Company Name <Text className="text-red-500">*</Text>
+                            </Text>
+                            <TextInput
+                                className="bg-white border border-gray-300 rounded-lg py-3.5 px-4 text-base shadow-sm"
+                                value={formData.company}
+                                onChangeText={(t) => handleChange('company', t)}
+                                editable={!isSubmitting}
+                            />
+                        </View>
+
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">Location</Text>
+                            <TextInput
+                                className="bg-white border border-gray-300 rounded-lg py-3.5 px-4 text-base shadow-sm"
                                 value={formData.location}
                                 onChangeText={(t) => handleChange('location', t)}
+                                editable={!isSubmitting}
                             />
-                            <View className="absolute right-3 top-4">
-                                <Ionicons name="location-outline" size={20} color="#9ca3af" />
-                            </View>
                         </View>
-                    </View>
 
-                    <View className="gap-2">
-                        <Text className="text-base font-medium text-gray-900">Application Deadline</Text>
-                        <View className="relative">
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">Deadline</Text>
                             <TextInput
-                                className="bg-white border border-gray-300 rounded-lg h-14 pl-4 pr-10 text-base"
+                                className="bg-white border border-gray-300 rounded-lg py-3.5 px-4 text-base shadow-sm"
+                                placeholder="YYYY-MM-DD"
                                 value={formData.deadline}
                                 onChangeText={(t) => handleChange('deadline', t)}
+                                editable={!isSubmitting}
                             />
-                            <View className="absolute right-3 top-4">
-                                <Ionicons name="calendar-outline" size={20} color="#9ca3af" />
-                            </View>
+                        </View>
+
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">Description</Text>
+                            <TextInput
+                                className="bg-white border border-gray-300 rounded-lg p-4 text-base shadow-sm min-h-[120px]"
+                                multiline
+                                textAlignVertical="top"
+                                value={formData.description}
+                                onChangeText={(t) => handleChange('description', t)}
+                                editable={!isSubmitting}
+                            />
+                        </View>
+
+                        <View className="gap-2">
+                            <Text className="text-xs font-bold tracking-widest text-gray-500 uppercase">Requirements</Text>
+                            <TextInput
+                                className="bg-white border border-gray-300 rounded-lg p-4 text-base shadow-sm min-h-[100px]"
+                                multiline
+                                textAlignVertical="top"
+                                placeholder="One per line..."
+                                value={formData.requirements}
+                                onChangeText={(t) => handleChange('requirements', t)}
+                                editable={!isSubmitting}
+                            />
                         </View>
                     </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
 
-                    <View className="gap-2">
-                        <Text className="text-base font-medium text-gray-900">Description</Text>
-                        <TextInput
-                            className="bg-white border border-gray-300 rounded-lg p-4 text-base min-h-[160px]"
-                            multiline
-                            textAlignVertical="top"
-                            value={formData.description}
-                            onChangeText={(t) => handleChange('description', t)}
-                        />
-                    </View>
-                </View>
-            </ScrollView>
-
-            <View className="p-4 bg-white border-t border-gray-200 mt-auto gap-3 pb-8">
+            <View className="p-5 bg-white/95 border-t border-gray-200 mt-auto gap-3 pb-8 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                 <TouchableOpacity
-                    className="bg-primary h-12 rounded-lg items-center justify-center shadow-lg shadow-primary/20"
-                    onPress={() => navigation.goBack()}
+                    className={`h-14 rounded-lg items-center justify-center flex-row gap-2 shadow-lg ${isSubmitting ? 'bg-primary/70' : 'bg-primary'}`}
+                    onPress={handleUpdate}
+                    disabled={isSubmitting || isDeleting}
                 >
-                    <Text className="font-bold text-white text-base">Update Job</Text>
+                    {isSubmitting ? (
+                        <ActivityIndicator color="white" />
+                    ) : (
+                        <>
+                            <Ionicons name="save-outline" size={20} color="white" />
+                            <Text className="font-bold text-white text-base">Update Changes</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    className="h-12 rounded-lg items-center justify-center border border-transparent hover:bg-red-50"
+                    className={`h-14 rounded-lg items-center justify-center flex-row gap-2 border border-red-50 ${isDeleting ? 'bg-red-50' : 'bg-red-50/50'}`}
                     onPress={handleDelete}
+                    disabled={isSubmitting || isDeleting}
                 >
-                    <Text className="font-bold text-red-500 text-base">Delete Job</Text>
+                    {isDeleting ? (
+                        <ActivityIndicator color="#ef4444" />
+                    ) : (
+                        <>
+                            <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                            <Text className="font-bold text-red-500 text-base">Delete Job</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
             </View>
         </View>
